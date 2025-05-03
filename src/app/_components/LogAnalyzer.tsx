@@ -1,6 +1,14 @@
 "use client"
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import cv from '@techstark/opencv-js';
+
+cv.onRuntimeInitialized = () => {
+  console.log("OpenCV.js is ready!");
+  // You can now use OpenCV functions here
+  console.log(cv.getBuildInformation());
+};
+
+
 
 interface ResultItem {
   filename: string;
@@ -19,10 +27,15 @@ function LogAnalyzer() {
   const [logHeight, setLogHeight] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [results, setResults] = useState<ResultItem[]>([]);
+  const [cvLoaded, setCvLoaded] = useState<boolean>(false);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const maskedImageRef = useRef<HTMLCanvasElement>(null);
+  const originalImageRef = useRef<HTMLImageElement>(null);
 
-  
 
 
+ 
 
   const exportToCSV = (data: ResultItem[]) => {
     const headers = ['Filename', 'Area', 'Centroid X', 'Centroid Y', 'Moment of Inertia', 'Section Modulus'];
@@ -46,19 +59,64 @@ function LogAnalyzer() {
   };
 
   const handleRunAnalysis = async () => {
+    if (!cvLoaded) {
+      alert('OpenCV.js is not yet loaded. Please wait a moment and try again.');
+      return;
+    }
+    
     setIsProcessing(true);
     try {
-      const analysisResults: ResultItem[] = [];
-      // Process each image in the input folder
-      // Note: In a real implementation, you would need to use the File System API
-      // or a backend service to handle file operations
+      // Create a file input element to select multiple image files
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.multiple = true;
+      fileInput.accept = 'image/png,image/jpeg,image/jpg';
       
-      setResults(analysisResults);
-      exportToCSV(analysisResults);
+      // Trigger file selection dialog
+      fileInput.click();
+      
+      // Process selected files
+      fileInput.onchange = async (event) => {
+        const target = event.target as HTMLInputElement;
+        const files = target.files;
+        
+        if (!files || files.length === 0) {
+          setIsProcessing(false);
+          return;
+        }
+        
+        const logHeightValue = parseFloat(logHeight);
+        
+        if (isNaN(logHeightValue) || logHeightValue <= 0) {
+          alert('Please enter a valid log height in millimeters.');
+          setIsProcessing(false);
+          return;
+        }
+        
+        // Set the first image for display
+        if (files[0]) {
+          setImageUrl(URL.createObjectURL(files[0]));
+        }
+        
+        setIsProcessing(false);
+      };
     } catch (error) {
       console.error('Error during analysis:', error);
-    } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleImageLoad = () => {
+    if (originalImageRef.current && cvLoaded) {
+      try {
+        const logHeightValue = parseFloat(logHeight);
+        if (!isNaN(logHeightValue) && logHeightValue > 0) {
+         // const result = processImage(originalImageRef.current, logHeightValue);
+          //setResults([result]);
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
+      }
     }
   };
 
@@ -102,12 +160,32 @@ function LogAnalyzer() {
         
         <button
           onClick={handleRunAnalysis}
-          disabled={isProcessing}
+          disabled={isProcessing || !cvLoaded}
           className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
         >
-          {isProcessing ? 'Processing...' : 'Run Analysis'}
+          {isProcessing ? 'Processing...' : cvLoaded ? 'Run Analysis' : 'Loading OpenCV...'}
         </button>
       </div>
+      
+      {imageUrl && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="image-card">
+            <h3 className="text-xl font-bold mb-2">Original Image</h3>
+            <img
+              ref={originalImageRef}
+              src={imageUrl}
+              alt="Original input"
+              className="border border-gray-300 bg-white"
+              onLoad={handleImageLoad}
+            />
+          </div>
+          
+          <div className="image-card">
+            <h3 className="text-xl font-bold mb-2">Processed Image</h3>
+            <canvas ref={canvasRef} className="border border-gray-300 bg-white"></canvas>
+          </div>
+        </div>
+      )}
       
       {results.length > 0 && (
         <div className="mt-4">
@@ -138,6 +216,12 @@ function LogAnalyzer() {
               </tbody>
             </table>
           </div>
+          <button
+            onClick={() => exportToCSV(results)}
+            className="mt-4 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+          >
+            Export to CSV
+          </button>
         </div>
       )}
     </div>
