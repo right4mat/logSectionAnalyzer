@@ -34,8 +34,8 @@ function LogAnalyzer() {
 
       console.log("OCR Text:", text);
 
-      // Look for patterns like "342mm" or "342 mm" in the text
-      const heightRegex = /(\d+)\s*mm/i;
+      // Look for any number in the text
+      const heightRegex = /(\d+)/;
       const match = heightRegex.exec(text);
 
       console.log("Height match:", match);
@@ -349,7 +349,7 @@ function LogAnalyzer() {
         </div>
 
         {!isProcessing && results.length === 0 && (
-          <div className="fixed right-0 bottom-20 left-0 mx-auto mb-6 max-w-2xl rounded-lg p-4 text-sm">
+          <div className="mx-auto mt-6 max-w-2xl rounded-lg p-4 text-sm">
             <h4 className="mb-2 text-center font-bold">
               Important Image Requirements:
             </h4>
