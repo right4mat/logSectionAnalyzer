@@ -1,6 +1,6 @@
 # Log Section Analyzer
 
-A powerful web-based tool for analyzing geometric properties of log cross-sections from images. This application processes black-and-white images of log sections and automatically extracts key geometric measurements and properties.
+A web-based tool built for my father for analyzing geometric properties of log cross-sections from images. This application processes black-and-white images of log sections and automatically extracts key geometric measurements and properties.
 
 ## Features
 
@@ -65,30 +65,23 @@ The application uses several key technologies:
 - **ExcelJS**: For generating detailed Excel reports
 - **Next.js**: For the web interface
 - **tRPC**: For type-safe API communication
+- **Tailwind CSS**: For styling and responsive design
+
+## TODO
+
+- Break down LogAnalyzer component into smaller, reusable components:
+  - ImageUploader
+  - ProcessingStatus
+  - ResultsTable
+  - ImageGallery
+  - PaginationControls
+  - ExportButton
+- Add proper loading states for each component
+- Implement error boundaries
+- Add unit tests for each component
+- Future enhancement: Integrate OpenAI API to:
+  - Pre-process images to identify rotting wood sections
+  - Automatically convert images to black and white (currently manual)
+  - Note: Currently out of scope but planned for future iterations
 
 ## Development
-
-```bash
-# Run development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Run type checking
-npm run typecheck
-
-# Run linting
-npm run lint
-```
-
-## License
-
-[Add your license information here]
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
