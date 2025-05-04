@@ -1,29 +1,94 @@
-# Create T3 App
+# Log Section Analyzer
 
-This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
+A powerful web-based tool for analyzing geometric properties of log cross-sections from images. This application processes black-and-white images of log sections and automatically extracts key geometric measurements and properties.
 
-## What's next? How do I make an app with this?
+## Features
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+- **Automatic Height Detection**: Extracts height measurements from images using OCR
+- **Geometric Analysis**: Calculates key properties including:
+  - Centroid coordinates (X, Y)
+  - Cross-sectional area
+  - Moment of inertia (Ixx)
+  - Section modulus
+- **Image Processing**: 
+  - Removes text and labels from processed images
+  - Highlights centroid location
+  - Shows coordinate axes
+- **Excel Export**: Generates detailed Excel reports with:
+  - All computed properties
+  - Processed images with annotations
+  - Formatted data tables
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+## Image Requirements
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Drizzle](https://orm.drizzle.team)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+For optimal results, ensure your images meet these criteria:
 
-## Learn More
+- Include the log section height in millimeters (mm)
+- Height measurement should be clearly visible and readable
+- Keep height measurements and annotations outside the log section area
+- Avoid placing text or measurements on top of the log section
+- Use black and white images for best results
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+## Getting Started
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+1. Clone the repository:
+   ```bash
+   git clone [repository-url]
+   cd logsections
+   ```
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## How do I deploy this?
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## Usage
+
+1. Click "Upload Images" to select one or more log section images
+2. Wait for the processing to complete
+3. View the results in the table below the images
+4. Click "Export to Excel" to download a detailed report
+
+## Technical Details
+
+The application uses several key technologies:
+
+- **OpenCV.js**: For image processing and geometric calculations
+- **Tesseract.js**: For OCR-based height detection
+- **ExcelJS**: For generating detailed Excel reports
+- **Next.js**: For the web interface
+- **tRPC**: For type-safe API communication
+
+## Development
+
+```bash
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Run type checking
+npm run typecheck
+
+# Run linting
+npm run lint
+```
+
+## License
+
+[Add your license information here]
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
