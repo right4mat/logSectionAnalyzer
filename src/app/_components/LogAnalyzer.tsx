@@ -19,7 +19,8 @@ function LogAnalyzer() {
 
   const analyzeImagesMutation = api.image.analyze.useMutation();
 
-  const BATCH_SIZE = 1; // Process 5 images at a time
+  const BATCH_SIZE = 1; // Process 1 image at a time
+  const CONCURRENT_BATCHES = 3; // Process 2 batches concurrently
   const imagesPerPage = 12; // 3 rows of 4 images
   const totalPages = Math.ceil(imageUrls.length / imagesPerPage);
 
@@ -57,6 +58,8 @@ function LogAnalyzer() {
   const processImageBatch = async (
     imageBatch: { data: string; filename: string }[],
   ) => {
+    if (!imageBatch) return [];
+
     // Extract heights for all images in the batch
     const imagesWithHeights = await Promise.all(
       imageBatch.map(async (image) => {
@@ -159,43 +162,52 @@ function LogAnalyzer() {
         setProcessingProgress(0);
         setProcessedIndices(new Set());
 
-        // Process batches sequentially and update progress
+        // Process batches in pairs and update progress
         const allResults: LogAnalysisResult[] = [];
-        for (let i = 0; i < batches.length; i++) {
-          const batch = batches[i];
-          if (batch) {
-            try {
-              const batchResults = await processImageBatch(batch);
-              allResults.push(...batchResults);
-
-              // Update progress only if there are multiple batches
-              if (batches.length > 1) {
-                const progress = ((i + 1) / batches.length) * 100;
-                setProcessingProgress(progress);
-              }
-
-              // Update results and processed images incrementally
-              setResults(allResults);
-              setProcessedImageUrls(
-                allResults.map((result) => result.processed_image_data),
-              );
-
-              // Mark the batch's images as processed
-              const startIdx = i * BATCH_SIZE;
-              const endIdx = Math.min(startIdx + BATCH_SIZE, allImages.length);
-              setProcessedIndices((prev) => {
-                const newSet = new Set(prev);
-                for (let j = startIdx; j < endIdx; j++) {
-                  newSet.add(j);
-                }
-                return newSet;
-              });
-            } catch (error) {
-              console.error("Error processing batch:", error);
-              alert(`Error processing images: ${error instanceof Error ? error.message : 'Unknown error'}`);
-              setIsProcessing(false);
-              return;
+        for (let i = 0; i < batches.length; i += CONCURRENT_BATCHES) {
+          const batchPromises = [];
+          for (let j = 0; j < CONCURRENT_BATCHES; j++) {
+            const batch = batches[i + j];
+            if (batch) {
+              batchPromises.push(processImageBatch(batch));
             }
+          }
+
+          try {
+            const batchResults = await Promise.all(batchPromises);
+            batchResults.forEach(results => {
+              if (results.length > 0) {
+                allResults.push(...results);
+              }
+            });
+
+            // Update progress only if there are multiple batches
+            if (batches.length > 1) {
+              const progress = ((i + CONCURRENT_BATCHES) / batches.length) * 100;
+              setProcessingProgress(Math.min(progress, 100));
+            }
+
+            // Update results and processed images incrementally
+            setResults(allResults);
+            setProcessedImageUrls(
+              allResults.map((result) => result.processed_image_data),
+            );
+
+            // Mark the batches' images as processed
+            const startIdx = i * BATCH_SIZE;
+            const endIdx = Math.min(startIdx + (BATCH_SIZE * CONCURRENT_BATCHES), allImages.length);
+            setProcessedIndices((prev) => {
+              const newSet = new Set(prev);
+              for (let j = startIdx; j < endIdx; j++) {
+                newSet.add(j);
+              }
+              return newSet;
+            });
+          } catch (error) {
+            console.error("Error processing batch:", error);
+            alert(`Error processing images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            setIsProcessing(false);
+            return;
           }
         }
 
