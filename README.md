@@ -80,6 +80,6 @@ The application uses several key technologies:
 - Implement error boundaries
 - Add unit tests for each component
 - Future enhancement: Integrate OpenAI API to:
-  - Pre-process images to identify rotting wood sections
+  - Pre-process images to identify rotting wood sections and remove from image (currently manual)
   - Automatically convert images to black and white (currently manual)
   - Note: Currently out of scope but planned for future iterations
