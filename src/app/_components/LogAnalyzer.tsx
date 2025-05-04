@@ -16,7 +16,6 @@ function LogAnalyzer() {
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [pulseEffect, setPulseEffect] = useState<boolean>(false);
   const [processedIndices, setProcessedIndices] = useState<Set<number>>(new Set());
-  const [imageHeights, setImageHeights] = useState<{ [key: string]: number }>({});
 
   const analyzeImagesMutation = api.image.analyze.useMutation();
 
@@ -125,7 +124,6 @@ function LogAnalyzer() {
         // Clear existing state when new images are uploaded
         setResults([]);
         setProcessedImageUrls([]);
-        setImageHeights({});
 
         // Create object URLs for all uploaded images
         const urls = Array.from(files).map((file) => URL.createObjectURL(file));
