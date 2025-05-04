@@ -1,9 +1,10 @@
 "use client";
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { type LogAnalysisResult } from "~/server/api/routers/image";
 import { api } from "~/trpc/react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import Image from "next/image";
 
 function LogAnalyzer() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -11,17 +12,12 @@ function LogAnalyzer() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [processedImageUrls, setProcessedImageUrls] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState<number>(0);
-  const [loadingDots, setLoadingDots] = useState<string>("...");
   const [processingProgress, setProcessingProgress] = useState<number>(0);
-  const originalImageRef = useRef<HTMLImageElement>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const dotsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [pulseEffect, setPulseEffect] = useState<boolean>(false);
   const [processedIndices, setProcessedIndices] = useState<Set<number>>(
     new Set(),
   );
 
-  const createCsvMutation = api.csv["create-csv"].useMutation();
   const analyzeImagesMutation = api.image.analyze.useMutation();
 
   const BATCH_SIZE = 5; // Process 5 images at a time
@@ -42,35 +38,18 @@ function LogAnalyzer() {
   // Loading dots animation
   useEffect(() => {
     if (isProcessing) {
-      const dotPatterns = [".", "..", "..."];
-      let index = 0;
-
-      dotsIntervalRef.current = setInterval(() => {
-        setLoadingDots(dotPatterns[index]!);
-        index = (index + 1) % dotPatterns.length;
-      }, 300);
-
       // Add pulse effect while processing
       const pulseInterval = setInterval(() => {
         setPulseEffect((prev) => !prev);
       }, 1000);
 
       return () => {
-        clearInterval(dotsIntervalRef.current!);
         clearInterval(pulseInterval);
       };
     } else {
       setPulseEffect(false);
-      if (dotsIntervalRef.current) {
-        clearInterval(dotsIntervalRef.current);
-      }
     }
 
-    return () => {
-      if (dotsIntervalRef.current) {
-        clearInterval(dotsIntervalRef.current);
-      }
-    };
   }, [isProcessing]);
 
   const handleNextPage = useCallback(() => {
@@ -143,29 +122,34 @@ function LogAnalyzer() {
         // Process batches sequentially and update progress
         const allResults: LogAnalysisResult[] = [];
         for (let i = 0; i < batches.length; i++) {
-          const batchResults = await processImageBatch(batches[i]!);
-          allResults.push(...batchResults);
+          const batch = batches[i];
+          if (batch) {
+            const batchResults = await processImageBatch(batch);
+            allResults.push(...batchResults);
 
-          // Update progress
-          const progress = ((i + 1) / batches.length) * 100;
-          setProcessingProgress(progress);
-
-          // Update results and processed images incrementally
-          setResults(allResults);
-          setProcessedImageUrls(
-            allResults.map((result) => result.processed_image_data),
-          );
-
-          // Mark the batch's images as processed
-          const startIdx = i * BATCH_SIZE;
-          const endIdx = Math.min(startIdx + BATCH_SIZE, allImages.length);
-          setProcessedIndices((prev) => {
-            const newSet = new Set(prev);
-            for (let j = startIdx; j < endIdx; j++) {
-              newSet.add(j);
+            // Update progress only if there are multiple batches
+            if (batches.length > 1) {
+              const progress = ((i + 1) / batches.length) * 100;
+              setProcessingProgress(progress);
             }
-            return newSet;
-          });
+
+            // Update results and processed images incrementally
+            setResults(allResults);
+            setProcessedImageUrls(
+              allResults.map((result) => result.processed_image_data),
+            );
+
+            // Mark the batch's images as processed
+            const startIdx = i * BATCH_SIZE;
+            const endIdx = Math.min(startIdx + BATCH_SIZE, allImages.length);
+            setProcessedIndices((prev) => {
+              const newSet = new Set(prev);
+              for (let j = startIdx; j < endIdx; j++) {
+                newSet.add(j);
+              }
+              return newSet;
+            });
+          }
         }
 
         setIsProcessing(false);
@@ -277,7 +261,7 @@ function LogAnalyzer() {
           >
             {isProcessing ? (
               <span className="flex items-center">
-                Processing {processingProgress.toFixed(0)}%
+                Processing{imageUrls.length > BATCH_SIZE ? ` ${processingProgress.toFixed(0)}%` : ''}
                 <svg
                   className="ml-2 h-4 w-4 animate-spin text-white"
                   xmlns="http://www.w3.org/2000/svg"
@@ -350,7 +334,6 @@ function LogAnalyzer() {
                 )
                 .map((url, index) => {
                   const actualIndex = currentPage * imagesPerPage + index;
-                  const result = results[actualIndex];
                   const processedUrl = processedImageUrls[actualIndex];
                   const isProcessed = processedIndices.has(actualIndex);
                   return (
@@ -358,9 +341,11 @@ function LogAnalyzer() {
                       key={actualIndex}
                       className="aspect-square w-full overflow-hidden rounded border border-gray-300 bg-white"
                     >
-                      <img
-                        src={processedUrl || url}
+                      <Image
+                        src={processedUrl ?? url}
                         alt={`Processed image ${actualIndex + 1}`}
+                        width={400}
+                        height={400}
                         className={`h-full w-full object-contain ${isProcessing && !isProcessed ? `blur-[4px] transition-all duration-500 ${pulseEffect ? "blur-[6px]" : "blur-[4px]"}` : ""}`}
                       />
                     </div>
@@ -372,7 +357,7 @@ function LogAnalyzer() {
                 <button
                   onClick={handlePrevPage}
                   disabled={currentPage === 0}
-                  className="rounded bg-gray-200 px-4 py-2 hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
+                  className="rounded bg-gray-200 px-4 py-2 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   Previous
                 </button>
@@ -382,7 +367,7 @@ function LogAnalyzer() {
                 <button
                   onClick={handleNextPage}
                   disabled={currentPage === totalPages - 1}
-                  className="rounded bg-gray-200 px-4 py-2 hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
+                  className="rounded bg-gray-200 px-4 py-2 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400"
                 >
                   Next
                 </button>
@@ -413,7 +398,7 @@ function LogAnalyzer() {
                   <tr key={index}>
                     <td className="border p-2">{result.filename}</td>
                     <td className="border p-2">
-                      {result.detected_height_mm?.toFixed(2) || "N/A"}
+                      {result.detected_height_mm?.toFixed(2) ?? "N/A"}
                     </td>
                     <td className="border p-2">{result.area_mm2.toFixed(2)}</td>
                     <td className="border p-2">

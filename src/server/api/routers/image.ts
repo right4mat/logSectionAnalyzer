@@ -3,7 +3,6 @@ import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import cv from "@techstark/opencv-js";
 import { createCanvas, Image } from "canvas";
 import { createWorker } from "tesseract.js";
-import path from "path";
 
 export interface LogAnalysisResult {
   filename: string;
@@ -14,6 +13,12 @@ export interface LogAnalysisResult {
   section_modulus_mm3: number;
   detected_height_mm: number | null;
   processed_image_data: string; // Base64 encoded image with annotations
+}
+
+interface Moments {
+  m00: number;
+  m10: number;
+  m01: number;
 }
 
 async function extractHeightFromImage(
@@ -36,7 +41,6 @@ async function extractHeightFromImage(
     // Recognize text in the image
     const worker = await createWorker("eng", 1, {
       workerPath: './node_modules/tesseract.js/src/worker-script/node/index.js',
-      //langPath: './eng.traineddata',
     });
     const result = await worker.recognize(dataUrl);
     const text = result.data.text;
@@ -45,12 +49,11 @@ async function extractHeightFromImage(
 
     // Look for patterns like "342mm" or "342 mm" in the text
     const heightRegex = /(\d+)\s*mm/i;
-
-    const match = text.match(heightRegex);
+    const match = heightRegex.exec(text);
 
     console.log("Height match:", match); // Debug log for height match
 
-    if (match && match[1]) {
+    if (match?.[1]) {
       const height = parseInt(match[1], 10);
       if (height > 0 && height < 1000) { // Sanity check for reasonable height values
         return height;
@@ -85,7 +88,7 @@ async function analyzeLogSection(
   console.log(`Detected height for ${filename}:`, detectedHeight);
 
   // Use detected height if available, otherwise use a default height of 300mm
-  const heightToUse = detectedHeight || 300; // Default to 300mm if no height detected
+  const heightToUse = detectedHeight ?? 300; // Default to 300mm if no height detected
   console.log(`Using height for ${filename}:`, heightToUse);
 
   // Get image data for processing
@@ -94,11 +97,11 @@ async function analyzeLogSection(
   // Convert to OpenCV Mat
   const src = cv.matFromImageData(imageData);
   const gray = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY as number);
 
   // Threshold the image
   const binary = new cv.Mat();
-  cv.threshold(gray, binary, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+  cv.threshold(gray, binary, 0, 255, (cv.THRESH_BINARY + cv.THRESH_OTSU) as number);
   cv.bitwise_not(binary, binary);
 
   // Find contours
@@ -108,8 +111,8 @@ async function analyzeLogSection(
     binary,
     contours,
     hierarchy,
-    cv.RETR_EXTERNAL,
-    cv.CHAIN_APPROX_SIMPLE,
+    cv.RETR_EXTERNAL as number,
+    cv.CHAIN_APPROX_SIMPLE as number,
   );
 
   // Find largest contour
@@ -130,7 +133,7 @@ async function analyzeLogSection(
   }
 
   // Create mask
-  const mask = cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8UC1);
+  const mask = cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8UC1 as number);
   cv.drawContours(mask, contours, largestContourIndex, new cv.Scalar(255), -1);
 
   // Get masked image
@@ -151,7 +154,7 @@ async function analyzeLogSection(
   console.log(`Pixel area in mm² for ${filename}:`, pixelAreaMm2);
 
   // Calculate moments and properties
-  const moments = cv.moments(mask);
+  const moments = cv.moments(mask) as Moments;
   const areaMm2 = moments.m00 * pixelAreaMm2;
   const centroidX = moments.m10 / moments.m00;
   const centroidY = moments.m01 / moments.m00;
@@ -170,12 +173,12 @@ async function analyzeLogSection(
     x: centroidXMm,
     y: centroidYMm
   });
-
   // Calculate Ixx (moment of inertia)
   let IxxMm4 = 0;
   for (let y = 0; y < mask.rows; y++) {
     for (let x = 0; x < mask.cols; x++) {
-      if (mask.ucharPtr(y, x)[0] === 255) {
+      const pixelValue = mask.ucharPtr(y, x) as Uint8Array;
+      if (pixelValue?.[0] === 255) {
         const yMm = y * scale;
         IxxMm4 += Math.pow(yMm - centroidYMm, 2) * pixelAreaMm2;
       }
@@ -195,6 +198,7 @@ async function analyzeLogSection(
   // Create a visualization with the log section and annotations
   const visualCanvas = createCanvas(img.width, img.height);
   const visualCtx = visualCanvas.getContext('2d');
+  if (!visualCtx) throw new Error("Failed to get visual canvas context");
   
   // Draw original image
   visualCtx.drawImage(img, 0, 0);
@@ -206,12 +210,14 @@ async function analyzeLogSection(
   visualCtx.beginPath();
   const contour = contours.get(largestContourIndex);
   for (let i = 0; i < contour.data32S.length; i += 2) {
-    const x = contour.data32S[i] ?? 0;
-    const y = contour.data32S[i + 1] ?? 0;
-    if (i === 0) {
-      visualCtx.moveTo(x, y);
-    } else {
-      visualCtx.lineTo(x, y);
+    const x = contour.data32S[i];
+    const y = contour.data32S[i + 1];
+    if (x !== undefined && y !== undefined) {
+      if (i === 0) {
+        visualCtx.moveTo(x, y);
+      } else {
+        visualCtx.lineTo(x, y);
+      }
     }
   }
   visualCtx.closePath();
@@ -258,15 +264,17 @@ async function analyzeLogSection(
   visualCtx.lineWidth = 4; // Increased from 3 to 4
   
   // Centroid label
-  visualCtx.strokeText('C', centroidX + 18, centroidY - 18); // Moved further from centroid
-  visualCtx.fillText('C', centroidX + 18, centroidY - 18);
+  const centroidXNum = Number(centroidX);
+  const centroidYNum = Number(centroidY);
+  visualCtx.strokeText('C', centroidXNum + 18, centroidYNum - 18); // Moved further from centroid
+  visualCtx.fillText('C', centroidXNum + 18, centroidYNum - 18);
   
   // Add X and Y labels at the ends of the axes
-  visualCtx.strokeText('X', img.width - 30, centroidY - 10);
-  visualCtx.fillText('X', img.width - 30, centroidY - 10);
+  visualCtx.strokeText('X', img.width - 30, centroidYNum - 10);
+  visualCtx.fillText('X', img.width - 30, centroidYNum - 10);
   
-  visualCtx.strokeText('Y', centroidX + 10, 30);
-  visualCtx.fillText('Y', centroidX + 10, 30);
+  visualCtx.strokeText('Y', centroidXNum + 10, 30);
+  visualCtx.fillText('Y', centroidXNum + 10, 30);
   
   // Get the processed image as base64
   const processedImageData = visualCanvas.toDataURL('image/png');
