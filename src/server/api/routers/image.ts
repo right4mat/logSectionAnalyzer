@@ -2,7 +2,6 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import cv from "@techstark/opencv-js";
 import { createCanvas, Image } from "canvas";
-import { createWorker } from "tesseract.js";
 
 export interface LogAnalysisResult {
   filename: string;
@@ -11,7 +10,7 @@ export interface LogAnalysisResult {
   centroid_y_mm: number;
   Ixx_mm4: number;
   section_modulus_mm3: number;
-  detected_height_mm: number | null;
+  detected_height_mm: number; // Height in millimeters that was used for calculations
   processed_image_data: string; // Base64 encoded image with annotations
 }
 
@@ -21,59 +20,9 @@ interface Moments {
   m01: number;
 }
 
-async function extractHeightFromImage(
-  imageBuffer: Buffer,
-): Promise<number | null> {
-  try {
-    // Create a temporary canvas to work with the image
-    const img = new Image();
-    img.src = imageBuffer;
-
-    const canvas = createCanvas(img.width, img.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Failed to get canvas context");
-
-    ctx.drawImage(img, 0, 0);
-
-    // Convert canvas to data URL for Tesseract
-    const dataUrl = canvas.toDataURL("image/png");
-
-    // Recognize text in the image
-    const workerOptions = process.env.NODE_ENV === 'development' 
-      ? {
-          workerPath: './node_modules/tesseract.js/src/worker-script/node/index.js'
-        }
-      : undefined;
-      
-    const worker = await createWorker("eng", process.env.NODE_ENV === 'development' ? 1 : undefined, workerOptions);
-    const result = await worker.recognize(dataUrl);
-    const text = result.data.text;
-
-    console.log("OCR Text:", text); // Debug log for OCR text
-
-    // Look for patterns like "342mm" or "342 mm" in the text
-    const heightRegex = /(\d+)\s*mm/i;
-    const match = heightRegex.exec(text);
-
-    console.log("Height match:", match); // Debug log for height match
-
-    if (match?.[1]) {
-      const height = parseInt(match[1], 10);
-      if (height > 0 && height < 1000) { // Sanity check for reasonable height values
-        return height;
-      }
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Error extracting height from image:", error);
-    return null;
-  }
-}
-
 async function analyzeLogSection(
   imageBuffer: Buffer,
-  realWorldHeightMm: number,
+  heightMm: number,
   filename: string,
 ): Promise<LogAnalysisResult> {
   // Create a canvas to load the image
@@ -86,14 +35,6 @@ async function analyzeLogSection(
 
   // Draw image to canvas
   ctx.drawImage(img, 0, 0);
-
-  // Try to extract height from image text BEFORE any processing
-  const detectedHeight = await extractHeightFromImage(imageBuffer);
-  console.log(`Detected height for ${filename}:`, detectedHeight);
-
-  // Use detected height if available, otherwise use a default height of 300mm
-  const heightToUse = detectedHeight ?? 300; // Default to 300mm if no height detected
-  console.log(`Using height for ${filename}:`, heightToUse);
 
   // Get image data for processing
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -151,7 +92,7 @@ async function analyzeLogSection(
   console.log(`Shape height in pixels for ${filename}:`, shapeHeightPx);
   
   // Calculate scale based on the actual shape height, not the full image
-  const scale = heightToUse / shapeHeightPx;
+  const scale = heightMm / shapeHeightPx;
   const pixelAreaMm2 = scale * scale;
 
   console.log(`Scale factor for ${filename}:`, scale);
@@ -177,6 +118,7 @@ async function analyzeLogSection(
     x: centroidXMm,
     y: centroidYMm
   });
+
   // Calculate Ixx (moment of inertia)
   let IxxMm4 = 0;
   for (let y = 0; y < mask.rows; y++) {
@@ -233,21 +175,21 @@ async function analyzeLogSection(
   // Draw centroid with much larger, more visible marker
   visualCtx.fillStyle = '#FF0000'; // Bright red
   visualCtx.beginPath();
-  visualCtx.arc(centroidX, centroidY, 15, 0, 2 * Math.PI); // Increased radius from 8 to 15
+  visualCtx.arc(centroidX, centroidY, 15, 0, 2 * Math.PI);
   visualCtx.fill();
   
   // Add a thicker contrasting border to the centroid
   visualCtx.strokeStyle = '#FFFFFF'; // White border
-  visualCtx.lineWidth = 4; // Increased from 2 to 4
+  visualCtx.lineWidth = 4;
   visualCtx.stroke();
   
   // Draw x and y axes through centroid with even higher visibility
   visualCtx.strokeStyle = '#0000FF'; // Bright blue
-  visualCtx.lineWidth = 5; // Increased from 3 to 5
+  visualCtx.lineWidth = 5;
   
   // X-axis with dashed line for better visibility
   visualCtx.beginPath();
-  visualCtx.setLineDash([15, 7]); // Increased dash size from [10, 5] to [15, 7]
+  visualCtx.setLineDash([15, 7]);
   visualCtx.moveTo(0, centroidY);
   visualCtx.lineTo(img.width, centroidY);
   visualCtx.stroke();
@@ -262,15 +204,15 @@ async function analyzeLogSection(
   visualCtx.setLineDash([]);
   
   // Add larger labels for clarity
-  visualCtx.font = 'bold 24px Arial'; // Increased from 16px to 24px
+  visualCtx.font = 'bold 24px Arial';
   visualCtx.fillStyle = '#000000';
   visualCtx.strokeStyle = '#FFFFFF';
-  visualCtx.lineWidth = 4; // Increased from 3 to 4
+  visualCtx.lineWidth = 4;
   
   // Centroid label
   const centroidXNum = Number(centroidX);
   const centroidYNum = Number(centroidY);
-  visualCtx.strokeText('C', centroidXNum + 18, centroidYNum - 18); // Moved further from centroid
+  visualCtx.strokeText('C', centroidXNum + 18, centroidYNum - 18);
   visualCtx.fillText('C', centroidXNum + 18, centroidYNum - 18);
   
   // Add X and Y labels at the ends of the axes
@@ -292,7 +234,6 @@ async function analyzeLogSection(
   mask.delete();
   maskedImage.delete();
 
-  // Return the detected height, not the height used for calculations
   return {
     filename,
     area_mm2: areaMm2,
@@ -300,7 +241,7 @@ async function analyzeLogSection(
     centroid_y_mm: centroidYMm,
     Ixx_mm4: IxxMm4,
     section_modulus_mm3: sectionModulusMm3,
-    detected_height_mm: detectedHeight, // Return the actual detected height, not the default
+    detected_height_mm: heightMm, // Return the height that was used for calculations
     processed_image_data: processedImageData,
   };
 }
@@ -313,9 +254,9 @@ export const imageRouter = createTRPCRouter({
           z.object({
             data: z.string(), // Base64 encoded image data
             filename: z.string(),
+            heightMm: z.number(), // Height in millimeters
           }),
         ),
-        logHeightMm: z.number(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -328,7 +269,7 @@ export const imageRouter = createTRPCRouter({
 
         const result = await analyzeLogSection(
           buffer,
-          input.logHeightMm,
+          image.heightMm,
           image.filename,
         );
         results.push(result);

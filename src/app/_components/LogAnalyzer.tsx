@@ -5,6 +5,7 @@ import { api } from "~/trpc/react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Image from "next/image";
+import { createWorker } from "tesseract.js";
 
 function LogAnalyzer() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -14,9 +15,8 @@ function LogAnalyzer() {
   const [currentPage, setCurrentPage] = useState<number>(0);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [pulseEffect, setPulseEffect] = useState<boolean>(false);
-  const [processedIndices, setProcessedIndices] = useState<Set<number>>(
-    new Set(),
-  );
+  const [processedIndices, setProcessedIndices] = useState<Set<number>>(new Set());
+  const [imageHeights, setImageHeights] = useState<{ [key: string]: number }>({});
 
   const analyzeImagesMutation = api.image.analyze.useMutation();
 
@@ -24,13 +24,56 @@ function LogAnalyzer() {
   const imagesPerPage = 12; // 3 rows of 4 images
   const totalPages = Math.ceil(imageUrls.length / imagesPerPage);
 
+  // Extract height from image using OCR
+  const extractHeightFromImage = async (imageData: string): Promise<number | null> => {
+    try {
+      const worker = await createWorker("eng");
+      const result = await worker.recognize(imageData);
+      const text = result.data.text;
+      await worker.terminate();
+
+      console.log("OCR Text:", text);
+
+      // Look for patterns like "342mm" or "342 mm" in the text
+      const heightRegex = /(\d+)\s*mm/i;
+      const match = heightRegex.exec(text);
+
+      console.log("Height match:", match);
+
+      if (match?.[1]) {
+        const height = parseInt(match[1], 10);
+        if (height > 0 && height < 1000) { // Sanity check for reasonable height values
+          return height;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Error extracting height from image:", error);
+      return null;
+    }
+  };
+
   // Process a single batch of images
   const processImageBatch = async (
     imageBatch: { data: string; filename: string }[],
   ) => {
+    // Extract heights for all images in the batch
+    const imagesWithHeights = await Promise.all(
+      imageBatch.map(async (image) => {
+        const height = await extractHeightFromImage(image.data);
+        if (!height) {
+          throw new Error(`Could not detect height in image ${image.filename}. Please ensure the height is clearly visible in the image.`);
+        }
+        return {
+          ...image,
+          heightMm: height,
+        };
+      })
+    );
+
     const results = await analyzeImagesMutation.mutateAsync({
-      images: imageBatch,
-      logHeightMm: 0, // This will be ignored as we're using detected height
+      images: imagesWithHeights,
     });
     return results;
   };
@@ -38,7 +81,6 @@ function LogAnalyzer() {
   // Loading dots animation
   useEffect(() => {
     if (isProcessing) {
-      // Add pulse effect while processing
       const pulseInterval = setInterval(() => {
         setPulseEffect((prev) => !prev);
       }, 1000);
@@ -49,7 +91,6 @@ function LogAnalyzer() {
     } else {
       setPulseEffect(false);
     }
-
   }, [isProcessing]);
 
   const handleNextPage = useCallback(() => {
@@ -84,6 +125,7 @@ function LogAnalyzer() {
         // Clear existing state when new images are uploaded
         setResults([]);
         setProcessedImageUrls([]);
+        setImageHeights({});
 
         // Create object URLs for all uploaded images
         const urls = Array.from(files).map((file) => URL.createObjectURL(file));
@@ -124,31 +166,38 @@ function LogAnalyzer() {
         for (let i = 0; i < batches.length; i++) {
           const batch = batches[i];
           if (batch) {
-            const batchResults = await processImageBatch(batch);
-            allResults.push(...batchResults);
+            try {
+              const batchResults = await processImageBatch(batch);
+              allResults.push(...batchResults);
 
-            // Update progress only if there are multiple batches
-            if (batches.length > 1) {
-              const progress = ((i + 1) / batches.length) * 100;
-              setProcessingProgress(progress);
-            }
-
-            // Update results and processed images incrementally
-            setResults(allResults);
-            setProcessedImageUrls(
-              allResults.map((result) => result.processed_image_data),
-            );
-
-            // Mark the batch's images as processed
-            const startIdx = i * BATCH_SIZE;
-            const endIdx = Math.min(startIdx + BATCH_SIZE, allImages.length);
-            setProcessedIndices((prev) => {
-              const newSet = new Set(prev);
-              for (let j = startIdx; j < endIdx; j++) {
-                newSet.add(j);
+              // Update progress only if there are multiple batches
+              if (batches.length > 1) {
+                const progress = ((i + 1) / batches.length) * 100;
+                setProcessingProgress(progress);
               }
-              return newSet;
-            });
+
+              // Update results and processed images incrementally
+              setResults(allResults);
+              setProcessedImageUrls(
+                allResults.map((result) => result.processed_image_data),
+              );
+
+              // Mark the batch's images as processed
+              const startIdx = i * BATCH_SIZE;
+              const endIdx = Math.min(startIdx + BATCH_SIZE, allImages.length);
+              setProcessedIndices((prev) => {
+                const newSet = new Set(prev);
+                for (let j = startIdx; j < endIdx; j++) {
+                  newSet.add(j);
+                }
+                return newSet;
+              });
+            } catch (error) {
+              console.error("Error processing batch:", error);
+              alert(`Error processing images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+              setIsProcessing(false);
+              return;
+            }
           }
         }
 
@@ -181,11 +230,6 @@ function LogAnalyzer() {
           key: "section_modulus_mm3",
           width: 20,
         },
-        {
-          header: "Detected Height (mm)",
-          key: "detected_height_mm",
-          width: 20,
-        },
       ];
 
       // Add data rows
@@ -197,9 +241,6 @@ function LogAnalyzer() {
           centroid_y_mm: Number(result.centroid_y_mm.toFixed(2)),
           Ixx_mm4: Number(result.Ixx_mm4.toFixed(2)),
           section_modulus_mm3: Number(result.section_modulus_mm3.toFixed(2)),
-          detected_height_mm: result.detected_height_mm
-            ? Number(result.detected_height_mm.toFixed(2))
-            : "N/A",
         });
       });
 
