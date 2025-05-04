@@ -39,9 +39,13 @@ async function extractHeightFromImage(
     const dataUrl = canvas.toDataURL("image/png");
 
     // Recognize text in the image
-    const worker = await createWorker("eng", 1, {
-      workerPath: './node_modules/tesseract.js/src/worker-script/node/index.js',
-    });
+    const workerOptions = process.env.NODE_ENV === 'development' 
+      ? {
+          workerPath: './node_modules/tesseract.js/src/worker-script/node/index.js'
+        }
+      : undefined;
+      
+    const worker = await createWorker("eng", process.env.NODE_ENV === 'development' ? 1 : undefined, workerOptions);
     const result = await worker.recognize(dataUrl);
     const text = result.data.text;
 
