@@ -27,6 +27,7 @@
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "next": "^15.2.3",
+    "openai": "^4.97.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1",

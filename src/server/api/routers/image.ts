@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import cv from "@techstark/opencv-js";
 import { createCanvas, Image } from "canvas";
+import openai from "./_openAI";
 
 // Initialize OpenCV
 let opencvReady = false;
@@ -277,6 +278,47 @@ async function analyzeLogSection(
   }
 }
 
+async function extractHeightWithOpenAI(imageData: string): Promise<number> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "This image contains a log section with a height measurement in millimeters. Extract ONLY the height value in millimeters. Return ONLY the number, nothing else."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageData
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 10
+    });
+
+    const heightText = response.choices[0]?.message?.content?.trim();
+    if (!heightText) {
+      throw new Error("No height value found in the image");
+    }
+
+    const height = parseInt(heightText, 10);
+    if (isNaN(height) || height <= 0 || height > 1000) {
+      throw new Error("Invalid height value detected");
+    }
+
+    return height;
+  } catch (error) {
+    console.error("Error extracting height with OpenAI:", error);
+    throw new Error(`Failed to extract height from image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 export const imageRouter = createTRPCRouter({
   analyze: publicProcedure
     .input(
@@ -285,7 +327,6 @@ export const imageRouter = createTRPCRouter({
           z.object({
             data: z.string(), // Base64 encoded image data
             filename: z.string(),
-            heightMm: z.number(), // Height in millimeters
           }),
         ),
       }),
@@ -298,13 +339,16 @@ export const imageRouter = createTRPCRouter({
         const results: LogAnalysisResult[] = [];
 
         for (const image of input.images) {
+          // Extract height using OpenAI
+          const heightMm = await extractHeightWithOpenAI(image.data);
+
           // Convert base64 to buffer
           const base64Data = image.data.replace(/^data:image\/\w+;base64,/, "");
           const buffer = Buffer.from(base64Data, "base64");
 
           const result = await analyzeLogSection(
             buffer,
-            image.heightMm,
+            heightMm,
             image.filename,
           );
           results.push(result);

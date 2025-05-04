@@ -5,7 +5,6 @@ import { api } from "~/trpc/react";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 import Image from "next/image";
-import { createWorker } from "tesseract.js";
 
 function LogAnalyzer() {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -24,58 +23,14 @@ function LogAnalyzer() {
   const imagesPerPage = 12; // 3 rows of 4 images
   const totalPages = Math.ceil(imageUrls.length / imagesPerPage);
 
-  // Extract height from image using OCR
-  const extractHeightFromImage = async (imageData: string): Promise<number | null> => {
-    try {
-      const worker = await createWorker("eng");
-      const result = await worker.recognize(imageData);
-      const text = result.data.text;
-      await worker.terminate();
-
-      console.log("OCR Text:", text);
-
-      // Look for any number in the text
-      const heightRegex = /(\d+)/;
-      const match = heightRegex.exec(text);
-
-      console.log("Height match:", match);
-
-      if (match?.[1]) {
-        const height = parseInt(match[1], 10);
-        if (height > 0 && height < 1000) { // Sanity check for reasonable height values
-          return height;
-        }
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Error extracting height from image:", error);
-      return null;
-    }
-  };
-
   // Process a single batch of images
   const processImageBatch = async (
     imageBatch: { data: string; filename: string }[],
   ) => {
     if (!imageBatch) return [];
 
-    // Extract heights for all images in the batch
-    const imagesWithHeights = await Promise.all(
-      imageBatch.map(async (image) => {
-        const height = await extractHeightFromImage(image.data);
-        if (!height) {
-          throw new Error(`Could not detect height in image ${image.filename}. Please ensure the height is clearly visible in the image.`);
-        }
-        return {
-          ...image,
-          heightMm: height,
-        };
-      })
-    );
-
     const results = await analyzeImagesMutation.mutateAsync({
-      images: imagesWithHeights,
+      images: imageBatch,
     });
     return results;
   };
