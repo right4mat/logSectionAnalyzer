@@ -19,7 +19,7 @@ function LogAnalyzer() {
 
   const analyzeImagesMutation = api.image.analyze.useMutation();
 
-  const BATCH_SIZE = 5; // Process 5 images at a time
+  const BATCH_SIZE = 1; // Process 5 images at a time
   const imagesPerPage = 12; // 3 rows of 4 images
   const totalPages = Math.ceil(imageUrls.length / imagesPerPage);
 
