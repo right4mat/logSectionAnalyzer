@@ -33,7 +33,7 @@ For optimal results, ensure your images meet these criteria:
 
 1. Clone the repository:
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/right4mat/logSectionAnalyzer.git
    cd logsections
    ```
 
@@ -83,5 +83,3 @@ The application uses several key technologies:
   - Pre-process images to identify rotting wood sections
   - Automatically convert images to black and white (currently manual)
   - Note: Currently out of scope but planned for future iterations
-
-## Development
