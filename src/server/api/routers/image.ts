@@ -2,7 +2,17 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import cv from "@techstark/opencv-js";
 import { createCanvas, Image } from "canvas";
-import openai from "./_openAI";
+import OpenAI from 'openai';
+
+// Initialize the OpenAI client with API key from environment variables
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+
+// Handle errors if API key is not set
+if (!process.env.OPENAI_API_KEY) {
+  console.warn('OPENAI_API_KEY is not set in environment variables');
+}
 
 // Initialize OpenCV
 let opencvReady = false;
